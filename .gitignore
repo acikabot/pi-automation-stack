@@ -1,0 +1,19 @@
+# Secrets — must never be committed
+.env
+*.env
+!*.env.example
+
+# Virtual environments — thousands of files, and they're
+# machine-specific. Anyone cloning rebuilds them from requirements.txt
+venv/
+*/venv/
+__pycache__/
+*.pyc
+
+# Runtime state — changes constantly, meaningless to anyone else,
+# and would create noisy diffs on every commit
+*.log
+seen_videos.json
+*.bak
+
+.DS_Store

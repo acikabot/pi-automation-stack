@@ -1,0 +1,5 @@
+feedparser
+openai
+requests
+python-dotenv
+youtube-transcript-api>=1.0.0

@@ -1,0 +1,13 @@
+[Unit]
+Description=Content Research Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=acika
+WorkingDirectory=/home/acika/bots/content-bot
+EnvironmentFile=/home/acika/bots/content-bot/.env
+ExecStart=/home/acika/bots/content-bot/venv/bin/python content_bot.py
+StandardOutput=append:/home/acika/bots/content-bot/content_bot.log
+StandardError=append:/home/acika/bots/content-bot/content_bot.log

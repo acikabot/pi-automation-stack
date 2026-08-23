@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Bot Updater every 5 days
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=5d
+Persistent=true
+
+[Install]
+WantedBy=timers.target

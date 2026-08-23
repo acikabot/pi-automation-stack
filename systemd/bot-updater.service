@@ -1,0 +1,8 @@
+[Unit]
+Description=Bot Dependency Updater
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=acika
+ExecStart=/home/acika/bots/updater/update_bots.sh

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi Bot Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="offline" id="offline">Lost connection to the Pi. Retrying…</div>
+
+<div class="shell">
+
+  <aside class="rail">
+    <div class="brand">
+      <h1>Bot control</h1>
+      <div class="host" id="hostline">raspi-acika</div>
+    </div>
+
+    <div class="pips" id="pips"></div>
+
+    <nav id="nav">
+      <button data-page="overview" class="on"><span>Overview</span></button>
+      <button data-page="bots"><span>Bots</span></button>
+      <button data-page="channels"><span>Channels</span></button>
+      <button data-page="logs"><span>Logs</span></button>
+      <button data-page="schedule"><span>Schedule</span></button>
+      <button data-page="diagnostics"><span>Diagnostics</span></button>
+      <button data-page="settings"><span>Settings</span></button>
+      <button data-page="system"><span>System</span></button>
+    </nav>
+
+    <div class="rail-foot" id="clock">—</div>
+  </aside>
+
+  <main>
+
+    <div class="alert" id="globalAlert"></div>
+
+    <!-- Overview -->
+    <section class="page on" id="page-overview">
+      <div class="page-head">
+        <h2>Overview</h2>
+        <p>Everything running on the Pi right now.</p>
+      </div>
+      <div class="grid two" id="overviewCards"></div>
+
+      <div class="section-gap">
+        <div class="grid stats" id="overviewStats"></div>
+      </div>
+    </section>
+
+    <!-- Bots -->
+    <section class="page" id="page-bots">
+      <div class="page-head">
+        <h2>Bots</h2>
+        <p>Start, stop, and trigger runs by hand.</p>
+      </div>
+      <div class="grid two" id="botCards"></div>
+    </section>
+
+    <!-- Channels -->
+    <section class="page" id="page-channels">
+      <div class="page-head">
+        <h2>Channels</h2>
+        <p>Channels the content bot watches for clip candidates.</p>
+      </div>
+
+      <div class="card">
+        <table id="channelTable"><tbody></tbody></table>
+        <div class="empty-note" id="channelEmpty" style="display:none">
+          No channels yet. Add one below to start watching it.
+        </div>
+      </div>
+
+      <div class="card section-gap">
+        <h3>Add a channel</h3>
+        <p class="blurb">Find the channel ID in the YouTube URL — it starts with UC.</p>
+        <div class="field">
+          <label for="chId">Channel ID</label>
+          <input type="text" id="chId" placeholder="UCUvvj5lwue7PspotMDjk5UA">
+        </div>
+        <div class="field">
+          <label for="chName">Name</label>
+          <input type="text" id="chName" placeholder="Jeff Nippard">
+        </div>
+        <div class="field">
+          <label for="chNiche">Niche</label>
+          <input type="text" id="chNiche" placeholder="evidence-based training, hypertrophy, nutrition">
+          <div class="hint">Tells the AI what kind of content to expect, which sharpens what it flags.</div>
+        </div>
+        <div class="err" id="chErr"></div>
+        <button class="btn primary" id="addChannel">Add channel</button>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section class="page" id="page-logs">
+      <div class="page-head">
+        <h2>Logs</h2>
+        <p>Live output from each bot.</p>
+      </div>
+
+      <div class="toolbar">
+        <select id="logPick"></select>
+        <select id="logLines">
+          <option value="100">Last 100 lines</option>
+          <option value="300" selected>Last 300 lines</option>
+          <option value="1000">Last 1000 lines</option>
+        </select>
+        <input type="text" id="logFind" placeholder="Filter lines…" style="flex:1;min-width:170px">
+        <label class="check"><input type="checkbox" id="logAuto" checked> Auto-refresh</label>
+        <button class="btn sm" id="logRefresh">Refresh</button>
+        <button class="btn sm danger" id="logClear">Clear log</button>
+      </div>
+
+      <div class="console" id="logBody">Loading…</div>
+    </section>
+
+    <!-- Schedule -->
+    <section class="page" id="page-schedule">
+      <div class="page-head">
+        <h2>Schedule</h2>
+        <p>When each scheduled job runs next.</p>
+      </div>
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>Job</th><th>Next run</th><th>In</th><th>Last run</th></tr>
+          </thead>
+          <tbody id="scheduleBody"></tbody>
+        </table>
+      </div>
+      <p class="empty-note">
+        Resident bots — Kevin and News — run on their own internal timers rather than
+        systemd, so they don't appear here.
+      </p>
+    </section>
+
+    <!-- Diagnostics -->
+    <section class="page" id="page-diagnostics">
+      <div class="page-head">
+        <h2>Diagnostics</h2>
+        <p>Pi health. Refreshes every 15 seconds.</p>
+      </div>
+      <div class="grid stats" id="diagStats"></div>
+    </section>
+
+    <!-- Settings -->
+    <section class="page" id="page-settings">
+      <div class="page-head">
+        <h2>Settings</h2>
+        <p>Where each bot sends its output.</p>
+      </div>
+      <div class="grid two" id="recipientCards"></div>
+    </section>
+
+    <!-- System -->
+    <section class="page" id="page-system">
+      <div class="page-head">
+        <h2>System</h2>
+        <p>Bulk controls and Pi power.</p>
+      </div>
+
+      <div class="card">
+        <h3>All bots</h3>
+        <p class="blurb">Applies to every bot at once.</p>
+        <div class="row">
+          <button class="btn" data-sys="start-all">Start all</button>
+          <button class="btn" data-sys="restart-all">Restart all</button>
+          <button class="btn danger" data-sys="stop-all">Stop all</button>
+        </div>
+      </div>
+
+      <div class="card section-gap">
+        <h3>Maintenance</h3>
+        <p class="blurb">The updater patches the OS and every bot's dependencies, then restarts them.</p>
+        <div class="row">
+          <button class="btn" data-sys="update-now">Run updater now</button>
+          <button class="btn" id="showUpdaterLog">View updater log</button>
+          <button class="btn danger" data-sys="clear-all-logs">Clear all bot logs</button>
+        </div>
+        <div class="console section-gap" id="updaterLog" style="display:none">Loading…</div>
+      </div>
+
+      <div class="card section-gap">
+        <h3>Power</h3>
+        <p class="blurb">Both take the Pi offline. The bots come back on their own after a reboot.</p>
+        <div class="row">
+          <button class="btn danger" data-sys="reboot" data-confirm="Reboot the Pi? Every bot stops until it comes back up.">Reboot Pi</button>
+          <button class="btn danger" data-sys="shutdown" data-confirm="Shut down the Pi? You'll need physical access to turn it back on.">Shut down Pi</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

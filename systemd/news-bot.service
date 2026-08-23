@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily News Report Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=acika
+WorkingDirectory=/home/acika/bots/news-bot
+EnvironmentFile=/home/acika/bots/news-bot/.env
+ExecStart=/home/acika/bots/news-bot/venv/bin/python news_bot.py
+StandardOutput=append:/home/acika/bots/news-bot/news_bot.log
+StandardError=append:/home/acika/bots/news-bot/news_bot.log

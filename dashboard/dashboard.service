@@ -1,0 +1,17 @@
+[Unit]
+Description=Pi Bot Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=acika
+WorkingDirectory=/home/acika/bots/dashboard
+ExecStart=/home/acika/bots/dashboard/venv/bin/uvicorn main:app --host 0.0.0.0 --port 5000
+Restart=on-failure
+RestartSec=15
+StandardOutput=append:/home/acika/bots/dashboard/dashboard.log
+StandardError=append:/home/acika/bots/dashboard/dashboard.log
+
+[Install]
+WantedBy=multi-user.target

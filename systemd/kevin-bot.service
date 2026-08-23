@@ -1,0 +1,16 @@
+[Unit]
+Description=Meet Kevin YouTube Summarizer Bot
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=acika
+WorkingDirectory=/home/acika/bots/kevin-bot
+EnvironmentFile=/home/acika/bots/kevin-bot/.env
+ExecStart=/home/acika/bots/kevin-bot/venv/bin/python kevin_bot.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:/home/acika/bots/kevin-bot/kevin_bot.log
+StandardError=append:/home/acika/bots/kevin-bot/kevin_bot.log
+[Install]
+WantedBy=multi-user.target
