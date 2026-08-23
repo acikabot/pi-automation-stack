@@ -1,5 +1,8 @@
 # Self-Hosted Automation Stack
 
+
+![Dashboard](docs/dashboard.png)
+
 Three Python automation services running continuously on a Raspberry Pi 4,
 managed by systemd and controlled through a FastAPI web dashboard.
 
