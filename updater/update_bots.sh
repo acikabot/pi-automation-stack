@@ -32,14 +32,21 @@ SUMMARY=""
 
 for bot in "${BOTS[@]}"; do
     BOT_PATH="$BOTS_DIR/$bot"
-    if [ -d "$BOT_PATH/venv" ] && [ -f "$BOT_PATH/requirements.txt" ]; then
-        echo "--- Updating $bot ---" >> "$LOG_FILE"
-        source "$BOT_PATH/venv/bin/activate"
-        pip install --upgrade -r "$BOT_PATH/requirements.txt" >> "$LOG_FILE" 2>&1
-        deactivate
-        SUMMARY="${SUMMARY}${bot}: updated. "
+    # Each bot names its requirements file differently — kevin_requirements_pi.txt,
+    # news_requirements_pi.txt, content_requirements.txt. Match whichever is present
+    # rather than assuming requirements.txt, which no bot actually has.
+    REQ_FILE=$(ls "$BOT_PATH"/*requirements*.txt 2>/dev/null | head -1)
+    if [ -d "$BOT_PATH/venv" ] && [ -n "$REQ_FILE" ]; then
+        echo "--- Updating $bot (from $(basename "$REQ_FILE")) ---" >> "$LOG_FILE"
+        # Call the venv's pip directly; activate/deactivate trips over `set -u`.
+        if "$BOT_PATH/venv/bin/pip" install --upgrade -r "$REQ_FILE" >> "$LOG_FILE" 2>&1; then
+            SUMMARY="${SUMMARY}${bot}: updated. "
+        else
+            echo "pip failed for $bot" >> "$LOG_FILE"
+            SUMMARY="${SUMMARY}${bot}: PIP FAILED. "
+        fi
     else
-        echo "Skipping $bot — venv or requirements.txt not found" >> "$LOG_FILE"
+        echo "Skipping $bot — venv or requirements file not found" >> "$LOG_FILE"
         SUMMARY="${SUMMARY}${bot}: skipped. "
     fi
 done

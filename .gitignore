@@ -16,4 +16,7 @@ __pycache__/
 seen_videos.json
 *.bak
 
+# Local AI assistant notes — deployment-specific, not part of the project
+CLAUDE.md
+
 .DS_Store
