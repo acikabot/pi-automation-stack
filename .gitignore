@@ -16,6 +16,14 @@ __pycache__/
 seen_videos.json
 *.bak
 
+# Personal config — the committed example/default is the template.
+# channels.json is written by the dashboard at runtime; the live prompts are
+# edited from the Prompts page. Both fall back to their committed twin
+# (channels.example.json, <name>.default.txt) so a fresh clone still runs.
+channels.json
+*/prompts/*.txt
+!*/prompts/*.default.txt
+
 # Local AI assistant notes — deployment-specific, not part of the project
 CLAUDE.md
 

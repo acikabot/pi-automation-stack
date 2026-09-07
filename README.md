@@ -57,11 +57,17 @@ single config flag, ready for external exposure via Cloudflare Tunnel.
 ## Running a service
 
 Each bot folder needs a `.env` (see the matching `.env.example`) and its own
-virtual environment:
+virtual environment. Each bot names its requirements file differently:
 
     python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
+    ./venv/bin/pip install -r *requirements*.txt
+
+`content-bot` also needs a watch list — copy `channels.example.json` to
+`channels.json`, or add channels from the dashboard once it's running.
+
+Prompts work the same way: each bot reads `prompts/<name>.txt`, falling back to
+the committed `prompts/<name>.default.txt` until you customise one from the
+dashboard's Prompts page.
 
 Then install the matching unit file from `systemd/` and enable it:
 

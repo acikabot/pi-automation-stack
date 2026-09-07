@@ -193,7 +193,12 @@ def load_prompt(name: str) -> str:
     Read at call time, not import time, so edits made in the dashboard take
     effect on the next hourly check without restarting this resident service.
     """
-    with open(os.path.join(PROMPT_DIR, f"{name}.txt"), encoding="utf-8") as f:
+    path = os.path.join(PROMPT_DIR, f"{name}.txt")
+    if not os.path.exists(path):
+        # The live copy is gitignored — fall back to the committed default so a
+        # fresh clone runs before anything has been customised.
+        path = os.path.join(PROMPT_DIR, f"{name}.default.txt")
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 def _call_groq(prompt: str, max_tokens=2500) -> str:

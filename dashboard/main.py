@@ -338,14 +338,18 @@ def list_prompts(bot_id: str, _=Depends(auth)):
     out = []
     for meta in bot.get("prompts", []):
         path, default_path = prompt_paths(bot, meta["id"])
-        text = ""
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as f:
-                text = f.read()
         default = ""
         if os.path.exists(default_path):
             with open(default_path, encoding="utf-8") as f:
                 default = f.read()
+
+        # The live copy is gitignored, so on a fresh clone only the default
+        # exists. Show that rather than an empty editor — it's what the bot
+        # will actually use until someone saves.
+        text = default
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
         out.append({
             "id":       meta["id"],
             "label":    meta["label"],

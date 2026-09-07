@@ -98,6 +98,8 @@ def load_channels() -> list:
     """Load channel list from channels.json."""
     if not os.path.exists(CHAN_FILE):
         log.error(f"channels.json not found at {CHAN_FILE}")
+        log.error("Copy channels.example.json to channels.json, or add channels "
+                  "from the dashboard.")
         return []
     with open(CHAN_FILE, encoding="utf-8") as f:
         return json.load(f).get("channels", [])
@@ -236,7 +238,12 @@ def load_prompt(name: str) -> str:
 
     Read at call time so dashboard edits apply to the next scheduled run.
     """
-    with open(os.path.join(PROMPT_DIR, f"{name}.txt"), encoding="utf-8") as f:
+    path = os.path.join(PROMPT_DIR, f"{name}.txt")
+    if not os.path.exists(path):
+        # The live copy is gitignored — fall back to the committed default so a
+        # fresh clone runs before anything has been customised.
+        path = os.path.join(PROMPT_DIR, f"{name}.default.txt")
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 def analyze_transcript(transcript: str, video_title: str, channel_name: str, niche: str, chunk_num=1, total_chunks=1) -> str:

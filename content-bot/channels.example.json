@@ -1,0 +1,14 @@
+{
+  "channels": [
+    {
+      "id": "UCxxxxxxxxxxxxxxxxxxxxxx",
+      "name": "Example Channel",
+      "niche": "what this channel actually makes videos about — the bot passes this to the AI to sharpen what it flags"
+    },
+    {
+      "id": "UCyyyyyyyyyyyyyyyyyyyyyy",
+      "name": "Another Channel",
+      "niche": "long-form podcast, guest interviews, strong opinions"
+    }
+  ]
+}
