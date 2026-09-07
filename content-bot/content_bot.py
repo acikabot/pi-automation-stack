@@ -73,6 +73,7 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE  = os.path.join(BASE_DIR, "seen_videos.json")
 LOG_FILE   = os.path.join(BASE_DIR, "content_bot.log")
 CHAN_FILE  = os.path.join(BASE_DIR, "channels.json")
+PROMPT_DIR = os.path.join(BASE_DIR, "prompts")
 
 TEST_MODE  = len(sys.argv) > 1 and sys.argv[1] == "test"
 
@@ -229,70 +230,18 @@ def call_groq(prompt: str, max_tokens=1500) -> str:
 
 # ─── Analysis prompt ──────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are an AI content researcher helping find potential YouTube Shorts clips from long-form videos.
+def load_prompt(name: str) -> str:
+    """
+    Read a prompt template from prompts/<name>.txt.
 
-Your job is NOT to summarize the video. Your job is to identify every section of the transcript that could potentially be turned into an engaging YouTube Short, Instagram Reel, or TikTok.
-
-I will personally review your suggestions and decide which clips to use. Your job is to find potential — not make final decisions.
-
-WHAT MAKES A GOOD CLIP — look for moments containing one or more of:
-- STRONG OPINION: confident claim, hot take, criticism of common beliefs
-- CONTRARIAN: challenges common advice, "everyone says X but actually Y"
-- SURPRISING FACT: makes someone think "wait, really?"
-- ACTIONABLE ADVICE: practical tip someone can immediately apply
-- MISTAKE / WARNING: "you're doing X wrong", bad habits, consequences
-- MYTH BUST: challenges something commonly believed
-- STORY: personal experience, failure, transformation, unexpected event
-- EMOTIONAL MOMENT: funny, frustrating, exciting, shocking, strong personality
-- DEBATE POTENTIAL: statement likely to provoke comments or disagreement
-- CURIOSITY GAP: statement that makes you want to hear the explanation
-- STRONG SOUNDBITE: sentence that can stand alone without context
-- INTERESTING EXPLANATION: complicated concept explained simply or unusually well
-
-DO NOT RETURN:
-- Generic introductions or greetings
-- Sponsor segments or self-promotion
-- Repetitive explanations
-- Basic information with no interesting angle
-- Generic motivational statements unless unusually specific
-- Moments only interesting because you know the surrounding context
-
-OVER-SELECT RATHER THAN UNDER-SELECT:
-Find ALL reasonably promising moments. If a video has 12 candidates, return 12.
-I decide what to use. When uncertain, include it.
-
-The transcript below has [MM:SS] timestamp markers at the start of every line.
-These are the exact timestamps from the YouTube video.
-
-CRITICAL INSTRUCTION: For every clip you identify, you MUST include the Timestamp field.
-Look at the [MM:SS] marker on the line where the clip starts and copy it exactly.
-If you cannot find a timestamp for a clip, do not include that clip.
-
-FOR EACH CLIP return exactly this format with no deviations:
-
-CLIP [number]
-Timestamp: [copy the MM:SS marker from the transcript line where this clip begins]
-Category: [one of the categories above in caps]
-Score: [1-10 overall short potential]
-Opening: "[first 1-2 sentences of the clip copied verbatim from the transcript]"
-Duration: [rough estimate: "~30 sec" / "~1 min" / "~2 min"]
-Why: [one sentence on why this could work as a Short]
-
-Example of correct output:
-CLIP 1
-Timestamp: 04:32
-Category: CONTRARIAN
-Score: 8/10
-Opening: "Most people think you need to train every day but that is completely wrong."
-Duration: ~45 sec
-Why: Challenges common belief and will generate debate in comments.
-
-After all clips, add a section:
-TOP PICKS: [comma-separated clip numbers that are the strongest candidates]"""
+    Read at call time so dashboard edits apply to the next scheduled run.
+    """
+    with open(os.path.join(PROMPT_DIR, f"{name}.txt"), encoding="utf-8") as f:
+        return f.read()
 
 def analyze_transcript(transcript: str, video_title: str, channel_name: str, niche: str, chunk_num=1, total_chunks=1) -> str:
     chunk_note = f" (part {chunk_num} of {total_chunks})" if total_chunks > 1 else ""
-    prompt = f"""{SYSTEM_PROMPT}
+    prompt = f"""{load_prompt("clip_finder")}
 
 NICHE: {niche}
 CHANNEL: {channel_name}
@@ -304,31 +253,53 @@ TRANSCRIPT:
 Find all clip candidates now."""
     return call_groq(prompt)
 
-def combine_analyses(parts: list, video_title: str, channel_name: str) -> str:
-    combined = "\n\n---PART BREAK---\n\n".join(parts)
-    if len(combined) > 6000:
-        combined = combined[:6000] + "\n\n[...additional candidates truncated to fit token limit...]"
-    prompt = f"""You analyzed a long video in {len(parts)} parts. Here are the clip candidates found across all parts:
+CLIP_RE = re.compile(r"^CLIP\s+(\d+)[^\n]*$", re.MULTILINE)
+TOP_RE  = re.compile(r"^TOP PICKS:\s*(.*)$", re.MULTILINE | re.IGNORECASE)
 
-VIDEO: {video_title}
-CHANNEL: {channel_name}
+def merge_analyses(parts: list) -> str:
+    """
+    Stitch the per-chunk analyses into one list, renumbering clips sequentially.
 
-{combined}
+    Done in Python rather than with a second Groq call. chunk_transcript() slices
+    the transcript into disjoint pieces, so there are no cross-chunk duplicates to
+    reconcile — the only real jobs are renumbering and merging TOP PICKS. The old
+    LLM consolidation truncated its input to 6000 characters, which silently threw
+    away most candidates on any long video (runs in the log reach 37 chunks).
 
-Now produce one unified list. Re-number all clips sequentially. Remove any duplicates.
-Keep the same format:
+    Falls back to plain concatenation if the output doesn't parse, so a formatting
+    surprise from the model can never lose clips.
+    """
+    out, top_picks, counter = [], [], 0
 
-CLIP [number]
-Timestamp: [MM:SS]
-Category: [category]
-Score: [1-10]
-Opening: "[opening sentence]"
-Duration: [duration]
-Why: [one sentence]
+    for part in parts:
+        picks_match = TOP_RE.search(part)
+        picks = picks_match.group(1) if picks_match else ""
+        body  = TOP_RE.sub("", part).strip()
 
-Then at the end:
-TOP PICKS: [clip numbers]"""
-    return call_groq(prompt, max_tokens=1500)
+        matches = list(CLIP_RE.finditer(body))
+        if not matches:
+            continue
+
+        # Renumber this part's clips onto the running global count.
+        local_to_global = {}
+        for idx, m in enumerate(matches):
+            counter += 1
+            local_to_global[m.group(1)] = counter
+            start = m.end()
+            end   = matches[idx + 1].start() if idx + 1 < len(matches) else len(body)
+            out.append(f"CLIP {counter}{body[start:end].rstrip()}")
+
+        for n in re.findall(r"\d+", picks):
+            if n in local_to_global:
+                top_picks.append(str(local_to_global[n]))
+
+    if not out:
+        return "\n\n".join(parts)
+
+    merged = "\n\n".join(out)
+    if top_picks:
+        merged += "\n\nTOP PICKS: " + ", ".join(top_picks)
+    return merged
 
 # ─── Process one video ────────────────────────────────────────────────────────
 
@@ -367,7 +338,7 @@ def process_video(video: dict, channel: dict) -> dict | None:
             part = analyze_transcript(chunk, video["title"], channel["name"], niche, i+1, len(chunks))
             parts.append(part)
             time.sleep(10)  # extra pause between chunks
-        analysis = combine_analyses(parts, video["title"], channel["name"])
+        analysis = merge_analyses(parts)
 
     return {
         "channel_name": channel["name"],

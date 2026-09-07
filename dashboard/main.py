@@ -132,6 +132,10 @@ class ChannelIn(BaseModel):
     niche: str
 
 
+class PromptIn(BaseModel):
+    text: str
+
+
 class SystemAction(BaseModel):
     action: str
 
@@ -179,6 +183,7 @@ def list_bots(_=Depends(auth)):
             "enabled":  svc["enabled"],
             "runs":     [{"label": l, "mode": m} for l, m in b["runs"]],
             "has_config": bool(b["config"]),
+            "has_prompts": bool(b.get("prompts")),
             "log_size": os.path.getsize(log_path) if os.path.exists(log_path) else 0,
             "last_activity": last_log_activity(log_path),
         })
@@ -280,6 +285,116 @@ def remove_channel(channel_id: str, _=Depends(auth)):
         raise HTTPException(status_code=404, detail="Channel not found")
     _write_channels(data)
     return {"ok": True, "message": "Channel removed"}
+
+
+# ─── Prompts ──────────────────────────────────────────────────────────────────
+
+def get_prompt_meta(bot: dict, prompt_id: str) -> dict:
+    """Look the prompt up in config so a request can't reach an arbitrary path."""
+    for p in bot.get("prompts", []):
+        if p["id"] == prompt_id:
+            return p
+    raise HTTPException(status_code=404, detail=f"No prompt '{prompt_id}' for {bot['name']}")
+
+
+def prompt_paths(bot: dict, prompt_id: str) -> tuple:
+    base = os.path.join(bot["dir"], "prompts")
+    return (
+        os.path.join(base, f"{prompt_id}.txt"),
+        os.path.join(base, f"{prompt_id}.default.txt"),
+    )
+
+
+def check_placeholders(text: str, required: list) -> Optional[str]:
+    """
+    Reject a prompt that would break or silently misbehave at run time.
+
+    A prompt missing {transcript} doesn't raise — the bot cheerfully asks the model
+    to summarise nothing and emails the result. That's the failure this prevents.
+    Prompts with no variables are never .format()ed, so braces in them are literal
+    and left alone.
+    """
+    if not required:
+        return None
+
+    missing = [v for v in required if "{" + v + "}" not in text]
+    if missing:
+        return "Missing required placeholder(s): " + ", ".join("{" + m + "}" for m in missing)
+
+    try:
+        text.format(**{v: "" for v in required})
+    except KeyError as e:
+        return (f"Unknown placeholder {{{e.args[0]}}}. Available here: "
+                + ", ".join("{" + v + "}" for v in required))
+    except (ValueError, IndexError):
+        return ("Unbalanced or malformed braces. Write a literal brace as {{ or }}, "
+                "and use only " + ", ".join("{" + v + "}" for v in required))
+    return None
+
+
+@app.get("/api/bots/{bot_id}/prompts")
+def list_prompts(bot_id: str, _=Depends(auth)):
+    bot = get_bot(bot_id)
+    out = []
+    for meta in bot.get("prompts", []):
+        path, default_path = prompt_paths(bot, meta["id"])
+        text = ""
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        default = ""
+        if os.path.exists(default_path):
+            with open(default_path, encoding="utf-8") as f:
+                default = f.read()
+        out.append({
+            "id":       meta["id"],
+            "label":    meta["label"],
+            "desc":     meta["desc"],
+            "vars":     meta["vars"],
+            "text":     text,
+            "modified": bool(default) and text != default,
+            "missing":  not os.path.exists(path),
+        })
+    return out
+
+
+@app.put("/api/bots/{bot_id}/prompts/{prompt_id}")
+def save_prompt(bot_id: str, prompt_id: str, body: PromptIn, _=Depends(auth)):
+    bot  = get_bot(bot_id)
+    meta = get_prompt_meta(bot, prompt_id)
+
+    text = body.text.replace("\r\n", "\n")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="A prompt can't be empty")
+
+    problem = check_placeholders(text, meta["vars"])
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+
+    path, _default = prompt_paths(bot, prompt_id)
+    if not os.path.isdir(os.path.dirname(path)):
+        raise HTTPException(status_code=500, detail="This bot has no prompts/ directory")
+    if os.path.exists(path):
+        shutil.copyfile(path, path + ".bak")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+    when = "next run" if bot["kind"] == "scheduled" else "next hourly check"
+    return {"ok": True, "message": f"{meta['label']} saved — applies on the {when}."}
+
+
+@app.post("/api/bots/{bot_id}/prompts/{prompt_id}/reset")
+def reset_prompt(bot_id: str, prompt_id: str, _=Depends(auth)):
+    bot  = get_bot(bot_id)
+    meta = get_prompt_meta(bot, prompt_id)
+    path, default_path = prompt_paths(bot, prompt_id)
+
+    if not os.path.exists(default_path):
+        raise HTTPException(status_code=404, detail="No shipped default saved for this prompt")
+    if os.path.exists(path):
+        shutil.copyfile(path, path + ".bak")
+    shutil.copyfile(default_path, path)
+    return {"ok": True, "message": f"{meta['label']} reset to the original."}
 
 
 # ─── Email recipients ─────────────────────────────────────────────────────────
@@ -444,6 +559,21 @@ def system_action(body: SystemAction, _=Depends(auth)):
 
 
 # ─── Static ───────────────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def no_stale_assets(request, call_next):
+    """
+    Stop the browser serving a stale app.js or style.css.
+
+    StaticFiles sends an ETag but no Cache-Control, so browsers fall back to
+    heuristic freshness and can skip revalidation entirely — which serves old
+    JavaScript against new HTML after a UI change, with no visible error.
+    """
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
 
 @app.get("/")
 def index():

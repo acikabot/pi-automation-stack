@@ -18,6 +18,17 @@ Fields:
   runs      List of manual run modes exposed as buttons. Each is (label, argv_suffix).
             An empty string means run the script with no extra argument.
   config    Optional path to a JSON config file the dashboard can edit (content bot only).
+  prompts   Prompts exposed on the Prompts page. Each is a dict:
+              id    filename stem inside <bot dir>/prompts/, so "morning" is
+                    prompts/morning.txt with prompts/morning.default.txt beside it.
+              label Display name.
+              desc  One or two lines explaining what editing it changes.
+              vars  Placeholder names the template MUST contain, e.g. ["title"].
+                    Saving is rejected if any are missing or an unknown one is
+                    added — a prompt that drops {transcript} does not crash the
+                    bot, it just quietly summarises nothing, so this is the guard.
+            Only creative prompts belong here. The mechanical ones (kevin's
+            per-chunk extraction) stay in code.
 """
 
 BASE_DIR = "/home/acika/bots"
@@ -34,6 +45,16 @@ BOTS = [
         "kind":    "resident",
         "runs":    [("Test run", "test")],
         "config":  None,
+        "prompts": [
+            {
+                "id":    "summary_style",
+                "label": "Summary style",
+                "desc":  "The sections of the email and the tone of the summary. Used for "
+                         "every video, short or long — both code paths append this same "
+                         "spec, so one edit changes them all.",
+                "vars":  [],
+            },
+        ],
         "blurb":   "Summarizes new videos from one channel, hourly.",
     },
     {
@@ -47,6 +68,22 @@ BOTS = [
         "kind":    "scheduled",
         "runs":    [("Morning brief", "morning"), ("Evening recap", "evening")],
         "config":  None,
+        "prompts": [
+            {
+                "id":    "morning",
+                "label": "Morning brief",
+                "desc":  "Sections, ordering and tone of the 08:00 briefing. The date and "
+                         "the fetched headlines are attached automatically.",
+                "vars":  [],
+            },
+            {
+                "id":    "evening",
+                "label": "Evening recap",
+                "desc":  "Sections, ordering and tone of the 20:00 recap. The date and the "
+                         "fetched headlines are attached automatically.",
+                "vars":  [],
+            },
+        ],
         "blurb":   "Morning brief and evening recap, twice daily.",
     },
     {
@@ -60,6 +97,16 @@ BOTS = [
         "kind":    "scheduled",
         "runs":    [("Full run", ""), ("Test run", "test")],
         "config":  f"{BASE_DIR}/content-bot/channels.json",
+        "prompts": [
+            {
+                "id":    "clip_finder",
+                "label": "Clip finder",
+                "desc":  "The criteria for what counts as a Short-worthy moment, and the "
+                         "output format for each clip. This is the one that decides what "
+                         "the bot flags.",
+                "vars":  [],
+            },
+        ],
         "blurb":   "Scans channels for clip candidates, three times daily.",
     },
 ]

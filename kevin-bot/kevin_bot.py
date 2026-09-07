@@ -65,6 +65,7 @@ CHANNEL_ID   = "UCUvvj5lwue7PspotMDjk5UA"
 CHANNEL_RSS  = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
 SEEN_FILE    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seen_videos.json")
 LOG_FILE     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kevin_bot.log")
+PROMPT_DIR   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
 CHECK_INTERVAL_MINUTES = 60
 
 TEST_MODE = len(sys.argv) > 1 and sys.argv[1] == "test"
@@ -185,6 +186,16 @@ def summarize(transcript: str, title: str, url: str) -> str:
     partials = [_summarize_partial(c, title, i+1, len(chunks)) for i, c in enumerate(chunks)]
     return _combine(partials, title, url)
 
+def load_prompt(name: str) -> str:
+    """
+    Read a prompt template from prompts/<name>.txt.
+
+    Read at call time, not import time, so edits made in the dashboard take
+    effect on the next hourly check without restarting this resident service.
+    """
+    with open(os.path.join(PROMPT_DIR, f"{name}.txt"), encoding="utf-8") as f:
+        return f.read()
+
 def _call_groq(prompt: str, max_tokens=2500) -> str:
     r = client.chat.completions.create(
         model="openai/gpt-oss-20b",
@@ -196,6 +207,7 @@ def _call_groq(prompt: str, max_tokens=2500) -> str:
     return re.sub(r"<think>.*?</think>", "", r.choices[0].message.content, flags=re.DOTALL).strip()
 
 def _summarize_full(transcript: str, title: str, url: str) -> str:
+    """Single-chunk path. Rare — most videos on this channel are longer."""
     return _call_groq(f"""You are summarizing a financial YouTube video by Meet Kevin (Kevin Paffrath), a US financial creator covering stocks, real estate, and markets.
 
 VIDEO TITLE: {title}
@@ -204,30 +216,7 @@ VIDEO URL: {url}
 FULL TRANSCRIPT:
 {transcript}
 
-Write a structured summary with exactly these sections:
-
-MAIN THESIS
-Kevin's central argument in 1-2 sentences.
-
-KEY POINTS
-The 5-8 most important points Kevin makes. Each gets 2-3 sentences including his reasoning and any data cited.
-
-ACTIONABLE TAKEAWAYS
-3-5 concrete things Kevin suggests viewers do or watch for.
-
-RISKS OR CONCERNS MENTIONED
-2-4 risks or warnings Kevin raised.
-
-FORWARD-LOOKING STATEMENTS
-Any predictions or upcoming catalysts Kevin mentioned.
-
-SENTIMENT
-One word (Bullish / Bearish / Mixed) + one sentence explaining the overall tone.
-
-PLAIN ENGLISH SUMMARY
-Explain the entire video in plain simple language as if telling a friend who knows nothing about finance. No jargon, no ticker symbols, no technical terms. 4-6 sentences. Anyone should immediately understand what Kevin was talking about and why it matters.
-
-Be direct and specific. No filler. This summary replaces watching the video.""")
+{load_prompt("summary_style")}""")
 
 def _summarize_partial(transcript: str, title: str, n: int, total: int) -> str:
     return _call_groq(f"""Part {n} of {total} of a Meet Kevin financial video: "{title}"
@@ -239,20 +228,20 @@ Extract key points: main arguments, predictions, data cited, risks, actionable a
 Write 3-5 concise paragraphs.""", max_tokens=1300)
 
 def _combine(partials: list, title: str, url: str) -> str:
+    """
+    Multi-chunk path — the usual one for this channel.
+
+    Shares summary_style.txt with _summarize_full so a single edit in the
+    dashboard changes the shape of every summary, long or short.
+    """
     combined = "\n\n---\n\n".join(partials)
-    return _call_groq(f"""Partial summaries of Meet Kevin video: "{title}" ({url})
+    return _call_groq(f"""These are notes taken from consecutive parts of ONE Meet Kevin video: "{title}" ({url})
 
 {combined}
 
-Write one unified structured summary:
+Merge them into a single summary of that one video. Do not treat the parts as separate videos.
 
-MAIN THESIS — 1-2 sentences
-KEY POINTS — 6-8 points, 2-3 sentences each
-ACTIONABLE TAKEAWAYS — 3-5 concrete items
-RISKS OR CONCERNS MENTIONED — 2-4 points
-FORWARD-LOOKING STATEMENTS
-SENTIMENT — one word + one sentence
-PLAIN ENGLISH SUMMARY — 4-6 sentences, no jargon, explain like telling a friend""")
+{load_prompt("summary_style")}""")
 
 # ─── Email ────────────────────────────────────────────────────────────────────
 

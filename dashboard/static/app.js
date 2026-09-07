@@ -4,6 +4,9 @@ const state = {
   page: "overview",
   bots: [],
   logBot: null,
+  prompts: [],
+  promptBot: null,
+  promptOriginals: {},
   offline: false,
 };
 
@@ -58,6 +61,7 @@ function go(page) {
     p.classList.toggle("on", p.id === "page-" + page));
 
   if (page === "channels")    loadChannels();
+  if (page === "prompts")     loadPrompts();
   if (page === "logs")        loadLog();
   if (page === "schedule")    loadSchedule();
   if (page === "diagnostics") loadSystem();
@@ -274,6 +278,163 @@ document.getElementById("logClear").addEventListener("click", async () => {
     toast(r.message);
     loadLog();
   } catch (e) { toast(e.message, true); }
+});
+
+// ─── Prompts ──────────────────────────────────────────────────────────────
+
+function promptBox(id)  { return document.querySelector(`[data-box="${id}"]`); }
+function promptDirty(id) {
+  const box = promptBox(id);
+  return box && box.value !== (state.promptOriginals[id] ?? "");
+}
+function anyPromptDirty() { return state.prompts.some(p => promptDirty(p.id)); }
+
+function promptNote(html) {
+  document.getElementById("promptList").innerHTML =
+    `<div class="card"><p class="empty-note">${html}</p></div>`;
+}
+
+async function loadPrompts() {
+  const botSel = document.getElementById("promptBot");
+
+  // Always fetch fresh rather than trusting state.bots — this page is often the
+  // first thing opened, and a stale/empty list used to leave the picker blank
+  // with nothing on screen to say why.
+  let bots;
+  try {
+    bots = await api("/api/bots");
+    state.bots = bots;
+  } catch (e) {
+    botSel.innerHTML = "";
+    promptNote(`Couldn't reach the dashboard API: ${esc(e.message)}`);
+    return;
+  }
+
+  const editable = bots.filter(b => b.has_prompts);
+  if (!editable.length) {
+    botSel.innerHTML = "";
+    promptNote(`The API returned ${bots.length} bot(s), none flagged as having prompts. ` +
+               `If this is unexpected, dashboard/config.py may be missing its "prompts" entries.`);
+    return;
+  }
+
+  botSel.innerHTML = editable.map(b =>
+    `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join("");
+  if (state.promptBot && editable.some(b => b.id === state.promptBot)) {
+    botSel.value = state.promptBot;
+  }
+  state.promptBot = botSel.value || editable[0].id;
+
+  try {
+    state.prompts = await api(`/api/bots/${state.promptBot}/prompts`);
+  } catch (e) {
+    promptNote(`Couldn't load prompts for this bot: ${esc(e.message)}`);
+    return;
+  }
+
+  renderPrompts();
+}
+
+function renderPrompts() {
+  const wrap = document.getElementById("promptList");
+
+  if (!state.prompts.length) {
+    wrap.innerHTML = '<div class="card"><p class="empty-note">This bot has no editable prompt.</p></div>';
+    return;
+  }
+
+  wrap.innerHTML = state.prompts.map(p => `
+    <div class="card section-gap">
+      <div class="card-head">
+        <h3>${esc(p.label)}</h3>
+        <span class="prompt-state" data-state="${esc(p.id)}"></span>
+      </div>
+      <p class="blurb">${esc(p.desc)}</p>
+      <textarea class="prompt-box" data-box="${esc(p.id)}" spellcheck="false"></textarea>
+      <div class="err" data-err="${esc(p.id)}"></div>
+      <div class="row section-gap">
+        <button class="btn primary" data-save="${esc(p.id)}">Save</button>
+        <button class="btn" data-undo="${esc(p.id)}">Undo my edits</button>
+        <button class="btn danger" data-reset="${esc(p.id)}" ${p.modified ? "" : "disabled"}>Reset to original</button>
+      </div>
+    </div>`).join("");
+
+  // Assign through .value so the prompt text is never mangled by HTML parsing.
+  state.promptOriginals = {};
+  state.prompts.forEach(p => {
+    state.promptOriginals[p.id] = p.text;
+    promptBox(p.id).value = p.text;
+    markPromptState(p.id);
+  });
+
+  wrap.querySelectorAll("[data-box]").forEach(box =>
+    box.addEventListener("input", () => markPromptState(box.dataset.box)));
+
+  wrap.querySelectorAll("[data-save]").forEach(btn =>
+    btn.addEventListener("click", () => savePrompt(btn.dataset.save)));
+
+  wrap.querySelectorAll("[data-undo]").forEach(btn =>
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.undo;
+      promptBox(id).value = state.promptOriginals[id] ?? "";
+      wrap.querySelector(`[data-err="${id}"]`).classList.remove("on");
+      markPromptState(id);
+    }));
+
+  wrap.querySelectorAll("[data-reset]").forEach(btn =>
+    btn.addEventListener("click", () => resetPrompt(btn.dataset.reset)));
+}
+
+function markPromptState(id) {
+  const el = document.querySelector(`[data-state="${id}"]`);
+  if (!el) return;
+  const p = state.prompts.find(x => x.id === id);
+  if (promptDirty(id)) {
+    el.textContent = "Unsaved changes";
+    el.className = "prompt-state dirty";
+  } else if (p && p.modified) {
+    el.textContent = "Customised";
+    el.className = "prompt-state mod";
+  } else {
+    el.textContent = "Original";
+    el.className = "prompt-state";
+  }
+}
+
+async function savePrompt(id) {
+  const err = document.querySelector(`[data-err="${id}"]`);
+  try {
+    const r = await api(`/api/bots/${state.promptBot}/prompts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ text: promptBox(id).value }),
+    });
+    err.classList.remove("on");
+    toast(r.message);
+    await loadPrompts();
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.add("on");
+  }
+}
+
+async function resetPrompt(id) {
+  const p = state.prompts.find(x => x.id === id);
+  if (!confirm(`Reset "${p ? p.label : ""}" to the original?\n\nYour current version is kept as a .bak file next to it.`)) return;
+  try {
+    const r = await api(`/api/bots/${state.promptBot}/prompts/${id}/reset`, { method: "POST" });
+    toast(r.message);
+    await loadPrompts();
+  } catch (e) { toast(e.message, true); }
+}
+
+document.getElementById("promptBot").addEventListener("change", e => {
+  if (anyPromptDirty() &&
+      !confirm("You have unsaved changes to this bot's prompt. Discard them?")) {
+    e.target.value = state.promptBot;
+    return;
+  }
+  state.promptBot = e.target.value;
+  loadPrompts();
 });
 
 // ─── Channels ─────────────────────────────────────────────────────────────

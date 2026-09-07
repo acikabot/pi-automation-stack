@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pi Bot Dashboard</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
 
@@ -24,6 +24,7 @@
       <button data-page="overview" class="on"><span>Overview</span></button>
       <button data-page="bots"><span>Bots</span></button>
       <button data-page="channels"><span>Channels</span></button>
+      <button data-page="prompts"><span>Prompts</span></button>
       <button data-page="logs"><span>Logs</span></button>
       <button data-page="schedule"><span>Schedule</span></button>
       <button data-page="diagnostics"><span>Diagnostics</span></button>
@@ -93,6 +94,20 @@
         <div class="err" id="chErr"></div>
         <button class="btn primary" id="addChannel">Add channel</button>
       </div>
+    </section>
+
+    <!-- Prompts -->
+    <section class="page" id="page-prompts">
+      <div class="page-head">
+        <h2>Prompts</h2>
+        <p>What each bot asks the AI. Saved changes apply on that bot's next run — nothing needs restarting.</p>
+      </div>
+
+      <div class="toolbar">
+        <select id="promptBot"></select>
+      </div>
+
+      <div id="promptList"><p class="empty-note">Loading…</p></div>
     </section>
 
     <!-- Logs -->
@@ -198,6 +213,6 @@
 </div>
 
 <div id="toast"></div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=2"></script>
 </body>
 </html>
