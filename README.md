@@ -24,8 +24,9 @@ hosting costs or ongoing manual maintenance.
 
 Each bot runs in an isolated virtual environment as its own systemd service,
 with auto-start on boot, auto-restart on failure, and per-service logging.
-Scheduled bots are driven by systemd timers rather than internal loops, so
-timing survives restarts and reboots.
+`news-bot` and `content-bot` are one-shot units fired by systemd timers, so
+their timing survives restarts and reboots. `kevin-bot` is resident and paces
+itself in-process.
 
 Shared pipeline:
 
@@ -34,14 +35,19 @@ Shared pipeline:
 ## Engineering notes
 
 - **Rate limit handling** — transcripts are chunked and batched to stay under
-  the LLM provider's tokens-per-minute ceiling, with the consolidation step
-  capped so hour-long videos can't exceed the budget.
+  the LLM provider's tokens-per-minute ceiling, with a pause between calls and
+  a cap on how many channels a single run will touch. Per-chunk results are
+  stitched back together in Python rather than by a second model call, which
+  keeps every candidate and saves a request per video.
 - **Config-driven design** — the dashboard builds its entire UI from a bot
   list in `config.py`; adding a service is a single entry. `content-bot`
   reads its watch list from `channels.json`, editable from the dashboard.
 - **Failure handling** — an item that can't be processed is marked seen so it
-  isn't retried indefinitely, and triggers a failure notification rather than
-  failing silently.
+  isn't retried indefinitely. `kevin-bot` pushes a failure notification;
+  `content-bot` records the error in its log and moves on.
+- **Editable prompts** — the wording each bot sends to the LLM lives in
+  `prompts/*.txt` and is edited from the dashboard. Files are read at call
+  time, so a change takes effect on the next run without restarting anything.
 - **Self-maintaining** — the updater patches the OS and every virtual
   environment on a timer, restarts affected services, and flags when a
   reboot is required.
@@ -49,10 +55,11 @@ Shared pipeline:
 ## Dashboard
 
 A FastAPI web app on port 5000 providing live service status, start/stop/
-restart controls, manual run triggers, a searchable log viewer, channel
-management, email recipient settings, and Pi health metrics (CPU, memory,
-disk, temperature, uptime). Auth is wired into every route and toggled by a
-single config flag, ready for external exposure via Cloudflare Tunnel.
+restart controls, manual run triggers, a searchable log viewer, prompt
+editing, channel management, email recipient settings, and Pi health metrics
+(CPU, memory, disk, temperature, uptime). Auth is wired into every route and
+toggled by a single config flag, ready for external exposure via Cloudflare
+Tunnel.
 
 ## Running a service
 
