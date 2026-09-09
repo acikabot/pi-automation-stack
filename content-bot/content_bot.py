@@ -81,14 +81,18 @@ client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 
+# Console output only when a human is watching. Under systemd and under the
+# dashboard's manual-run button, stdout is redirected into this same log file,
+# so a StreamHandler there would write every line twice.
+_handlers = [logging.FileHandler(LOG_FILE, encoding="utf-8")]
+if sys.stdout.isatty():
+    _handlers.append(logging.StreamHandler(sys.stdout))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ]
+    handlers=_handlers,
 )
 log = logging.getLogger(__name__)
 
