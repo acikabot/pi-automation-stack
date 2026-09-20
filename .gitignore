@@ -15,6 +15,8 @@ __pycache__/
 *.log
 seen_videos.json
 *.bak
+updater/snapshots/
+updater/.update.lock
 
 # Personal config — the committed example/default is the template.
 # channels.json is written by the dashboard at runtime; the live prompts are
