@@ -23,7 +23,7 @@
 # Sudo: this user currently has blanket passwordless sudo. When that is
 # tightened, /etc/sudoers.d/bot-updater needs these instead of the apt lines:
 #   /usr/bin/apt-get update, /usr/bin/apt-get full-upgrade -y, /usr/bin/apt-get autoremove -y
-#   /bin/systemctl restart kevin-bot.service dashboard.service avifly.service
+#   /bin/systemctl restart kevin-bot.service pidash.service avifly.service
 
 set -uo pipefail
 
@@ -46,7 +46,7 @@ PROJECTS=(
   "kevin-bot|$BOTS_DIR/kevin-bot|kevin-bot.service|always||"
   "news-bot|$BOTS_DIR/news-bot|news-bot.service|never||"
   "content-bot|$BOTS_DIR/content-bot|content-bot.service|never||"
-  "dashboard|$BOTS_DIR/dashboard|dashboard.service|always|http://127.0.0.1:5000/api/bots|"
+  "pidash|/home/acika/pi-dash|pidash.service|always|http://127.0.0.1:5000/healthz|make check"
   "avifly|/home/acika/avifly-tracker|avifly.service|always|http://127.0.0.1:8000/healthz|make check"
 )
 

@@ -1,10 +1,9 @@
 # Self-Hosted Automation Stack
 
 
-![Dashboard](docs/dashboard.png)
-
 Three Python automation services running continuously on a Raspberry Pi 4,
-managed by systemd and controlled through a FastAPI web dashboard.
+managed by systemd. A separate web dashboard (its own repository) drives them:
+status, start/stop/restart, manual runs, logs, prompts and settings.
 
 Built to solve my own workflow problems and to run reliably without cloud
 hosting costs or ongoing manual maintenance.
@@ -16,7 +15,6 @@ hosting costs or ongoing manual maintenance.
 | `kevin-bot/` | Summarizes new videos from a YouTube channel using an LLM | Hourly |
 | `news-bot/` | Morning brief and evening recap built from RSS feeds | 08:00, 20:00 |
 | `content-bot/` | Scans multiple channels for short-form clip candidates | 3x daily |
-| `dashboard/` | FastAPI control panel for every service | Always on |
 | `updater/` | Patches OS and Python dependencies, restarts services | Every 5 days |
 | `systemd/` | Unit and timer files for every service | — |
 
@@ -39,27 +37,30 @@ Shared pipeline:
   a cap on how many channels a single run will touch. Per-chunk results are
   stitched back together in Python rather than by a second model call, which
   keeps every candidate and saves a request per video.
-- **Config-driven design** — the dashboard builds its entire UI from a bot
-  list in `config.py`; adding a service is a single entry. `content-bot`
-  reads its watch list from `channels.json`, editable from the dashboard.
+- **Config-driven design** — `content-bot` reads its watch list from
+  `channels.json` and every bot reads its wording from `prompts/*.txt`, so the
+  behaviour is data, not code. Both are edited from the dashboard.
 - **Failure handling** — an item that can't be processed is marked seen so it
   isn't retried indefinitely. `kevin-bot` pushes a failure notification;
   `content-bot` records the error in its log and moves on.
 - **Editable prompts** — the wording each bot sends to the LLM lives in
-  `prompts/*.txt` and is edited from the dashboard. Files are read at call
-  time, so a change takes effect on the next run without restarting anything.
+  `prompts/*.txt`. Files are read at call time, so a change takes effect on the
+  next run without restarting anything.
+- **Shared settings** — who receives each bot's e-mail comes from
+  `/etc/bots/recipients.json`, written by the dashboard, with `EMAIL_RECIPIENT`
+  in the bot's own `.env` as the fallback. The dashboard never needs to read a
+  file that holds API keys.
 - **Self-maintaining** — the updater patches the OS and every virtual
   environment on a timer, restarts affected services, and flags when a
   reboot is required.
 
 ## Dashboard
 
-A FastAPI web app on port 5000 providing live service status, start/stop/
-restart controls, manual run triggers, a searchable log viewer, prompt
-editing, channel management, email recipient settings, and Pi health metrics
-(CPU, memory, disk, temperature, uptime). Auth is wired into every route and
-toggled by a single config flag, ready for external exposure via Cloudflare
-Tunnel.
+The control panel lives in its own repository and runs as its own unprivileged
+account, allowed to control exactly these units and nothing else. It shows live
+status, start/stop/restart, manual runs, logs, prompts, the channel list and the
+e-mail recipients. The units it uses for manual runs (`kevin-bot@test.service`
+and friends) are installed from there, not from `systemd/` here.
 
 ## Running a service
 
@@ -84,4 +85,4 @@ Then install the matching unit file from `systemd/` and enable it:
 
 ## Stack
 
-Python, FastAPI, systemd, Bash, Groq API, feedparser, SMTP, ntfy
+Python, systemd, Bash, Groq API, feedparser, SMTP, ntfy

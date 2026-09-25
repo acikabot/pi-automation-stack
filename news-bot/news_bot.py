@@ -31,7 +31,26 @@ from datetime import datetime, timezone
 GROQ_API_KEY    = os.environ["GROQ_API_KEY"]
 EMAIL_SENDER    = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD  = os.environ["EMAIL_PASSWORD"]
-EMAIL_RECIPIENT = os.environ["EMAIL_RECIPIENT"]
+def _recipients() -> str:
+    """Who gets this bot's mail.
+
+    The dashboard keeps the list in /etc/bots/recipients.json so it never has to read
+    this bot's .env (which holds the API keys). EMAIL_RECIPIENT in .env stays as the
+    fallback, so nothing breaks if that file is missing.
+    """
+    import json
+
+    try:
+        with open("/etc/bots/recipients.json", encoding="utf-8") as handle:
+            shared = json.load(handle).get("news", "").strip()
+        if shared:
+            return shared
+    except (OSError, ValueError):
+        pass
+    return os.environ["EMAIL_RECIPIENT"]
+
+
+EMAIL_RECIPIENT = _recipients()
 NEWS_BOT_NTFY   = os.environ.get("NEWS_BOT_NTFY", "")
 
 PROMPT_DIR      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
