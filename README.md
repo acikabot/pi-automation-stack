@@ -1,88 +1,95 @@
-# Self-Hosted Automation Stack
+# Self-hosted automation stack
 
+**Three small Python services that do the reading for me — a video summariser, a daily
+news brief and a clip finder — plus a job that keeps the whole machine patched.**
 
-Three Python automation services running continuously on a Raspberry Pi 4,
-managed by systemd. A separate web dashboard (its own repository) drives them:
-status, start/stop/restart, manual runs, logs, prompts and settings.
+![Python](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)
+![systemd](https://img.shields.io/badge/systemd-services_&_timers-30D475?logo=linux&logoColor=white)
+![LLM](https://img.shields.io/badge/LLM-Groq_API-F55036)
+![Bash](https://img.shields.io/badge/Bash-updater_with_rollback-4EAA25?logo=gnubash&logoColor=white)
+![Raspberry Pi](https://img.shields.io/badge/Raspberry_Pi-4-A22846?logo=raspberrypi&logoColor=white)
 
-Built to solve my own workflow problems and to run reliably without cloud
-hosting costs or ongoing manual maintenance.
+I follow a few YouTube channels and more news than I have time for. These services watch
+those sources, have a language model do the reading, and send me the result — a summary
+of a video worth watching, a brief in the morning and a recap at night, and a list of
+moments worth clipping. They run on a Raspberry Pi in my house rather than on rented
+servers: no monthly bill, and nothing about what I read leaves the machine except the
+text sent to the model.
 
-## Services
+The point of the project was not the bots. It was building something that keeps running
+when I am not watching it.
 
-| Service | Purpose | Schedule |
+```mermaid
+flowchart LR
+  YT[YouTube channels] --> S[Video summariser]
+  RSS[News feeds] --> N[News brief]
+  YT --> C[Clip finder]
+  S --> M[E-mail]
+  N --> M
+  C --> M
+  S -.failures.-> P[Push notification]
+  U[Updater] -. patches and restarts .-> S & N & C
+```
+
+## The services
+
+| | What it does | When |
 |---|---|---|
-| `kevin-bot/` | Summarizes new videos from a YouTube channel using an LLM | Hourly |
-| `news-bot/` | Morning brief and evening recap built from RSS feeds | 08:00, 20:00 |
-| `content-bot/` | Scans multiple channels for short-form clip candidates | 3x daily |
-| `updater/` | Patches OS and Python dependencies, restarts services | Every 5 days |
-| `systemd/` | Unit and timer files for every service | — |
+| **Video summariser** | Checks a channel for new uploads, fetches the transcript, and sends a structured summary — thesis, key points, takeaways, risks | Hourly |
+| **News brief** | Builds a morning briefing and an evening recap from a set of feeds | Twice a day |
+| **Clip finder** | Scans several channels for moments worth cutting into short videos, with timestamps and a reason | Three times a day |
+| **Updater** | Patches the operating system and every service's dependencies, verifies each one still works, and rolls back if not | Every five days |
 
-## Architecture
+A separate web dashboard (its own repository) shows their status, tails their logs and
+edits what they do.
 
-Each bot runs in an isolated virtual environment as its own systemd service,
-with auto-start on boot, auto-restart on failure, and per-service logging.
-`news-bot` and `content-bot` are one-shot units fired by systemd timers, so
-their timing survives restarts and reboots. `kevin-bot` is resident and paces
-itself in-process.
+## How it's built
 
-Shared pipeline:
+**Each service stands alone.** Its own dependencies, its own configuration, its own
+schedule, and no shared state — one breaking cannot take the others with it. Scheduling
+is handed to the operating system rather than kept inside a long-running process, so the
+timing survives restarts and reboots and a missed run is visible rather than silent.
 
-    RSS feed -> transcript / article text -> LLM (Groq) -> email + push notification
+**Behaviour is data, not code.** What the model is asked to do lives in plain text files,
+and the list of channels to watch is a data file. Both are read at the moment they are
+used, so changing the wording of a summary or adding a channel takes effect on the next
+run with nothing to restart and nothing to redeploy. The dashboard edits both, which is
+why they are files rather than constants.
 
-## Engineering notes
+**Working within a rate limit.** Transcripts of long videos exceed what the model will
+accept in one request, and the free tier has a ceiling on tokens per minute. Transcripts
+are split into chunks, sent with deliberate pauses, and the partial results are stitched
+back together in ordinary Python rather than by asking the model a second time — one less
+request, and nothing lost in a second round of summarising.
 
-- **Rate limit handling** — transcripts are chunked and batched to stay under
-  the LLM provider's tokens-per-minute ceiling, with a pause between calls and
-  a cap on how many channels a single run will touch. Per-chunk results are
-  stitched back together in Python rather than by a second model call, which
-  keeps every candidate and saves a request per video.
-- **Config-driven design** — `content-bot` reads its watch list from
-  `channels.json` and every bot reads its wording from `prompts/*.txt`, so the
-  behaviour is data, not code. Both are edited from the dashboard.
-- **Failure handling** — an item that can't be processed is marked seen so it
-  isn't retried indefinitely. `kevin-bot` pushes a failure notification;
-  `content-bot` records the error in its log and moves on.
-- **Editable prompts** — the wording each bot sends to the LLM lives in
-  `prompts/*.txt`. Files are read at call time, so a change takes effect on the
-  next run without restarting anything.
-- **Shared settings** — who receives each bot's e-mail comes from
-  `/etc/bots/recipients.json`, written by the dashboard, with `EMAIL_RECIPIENT`
-  in the bot's own `.env` as the fallback. The dashboard never needs to read a
-  file that holds API keys.
-- **Self-maintaining** — the updater patches the OS and every virtual
-  environment on a timer, restarts affected services, and flags when a
-  reboot is required.
+**Failures are expected, not exceptional.** A video with no transcript, a feed that is
+down, a request that comes back rate-limited: each is caught where it happens, recorded,
+and skipped so it isn't retried forever. Anything that stops a service outright triggers a
+push notification to my phone.
 
-## Dashboard
+**It maintains itself.** The updater patches the system and every service's dependencies
+on a timer. Before it touches anything it records exactly what was installed; afterwards
+it runs each service's own checks and confirms it is healthy, and if anything fails it
+puts back the previous set of packages and tells me. Unattended updates are only
+acceptable if they can undo themselves.
 
-The control panel lives in its own repository and runs as its own unprivileged
-account, allowed to control exactly these units and nothing else. It shows live
-status, start/stop/restart, manual runs, logs, prompts, the channel list and the
-e-mail recipients. The units it uses for manual runs (`kevin-bot@test.service`
-and friends) are installed from there, not from `systemd/` here.
+**Credentials stay put.** Each service keeps its own secrets, and the settings the
+dashboard is allowed to change live in a separate shared file — so the panel that edits
+them never needs to read a file containing API keys.
 
-## Running a service
+## Technology
 
-Each bot folder needs a `.env` (see the matching `.env.example`) and its own
-virtual environment. Each bot names its requirements file differently:
+| Layer | What's used |
+|---|---|
+| **Language** | Python 3, plus Bash for the updater |
+| **Scheduling and supervision** | systemd services and timers: auto-start, auto-restart, per-service logs |
+| **Language model** | Groq API, with chunking and rate-limit handling |
+| **Sources** | YouTube transcripts and RSS feeds |
+| **Delivery** | SMTP e-mail, ntfy push notifications |
+| **Host** | Raspberry Pi 4 |
 
-    python3 -m venv venv
-    ./venv/bin/pip install -r *requirements*.txt
+## Status
 
-`content-bot` also needs a watch list — copy `channels.example.json` to
-`channels.json`, or add channels from the dashboard once it's running.
-
-Prompts work the same way: each bot reads `prompts/<name>.txt`, falling back to
-the committed `prompts/<name>.default.txt` until you customise one from the
-dashboard's Prompts page.
-
-Then install the matching unit file from `systemd/` and enable it:
-
-    sudo cp systemd/kevin-bot.service /etc/systemd/system/
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now kevin-bot
-
-## Stack
-
-Python, systemd, Bash, Groq API, feedparser, SMTP, ntfy
+Running continuously since August 2026 and sending daily. The pieces I would build
+differently next time are in the dashboard's repository, which was rewritten from scratch
+once this stack outgrew its first control panel.
