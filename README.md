@@ -40,8 +40,8 @@ flowchart LR
 | **Clip finder** | Scans several channels for moments worth cutting into short videos, with timestamps and a reason | Three times a day |
 | **Updater** | Patches the operating system and every service's dependencies, verifies each one still works, and rolls back if not | Every five days |
 
-A separate web dashboard (its own repository) shows their status, tails their logs and
-edits what they do.
+A separate web dashboard (its own repository), made available through Tailscale, shows
+their status, tails their logs and edits what they do.
 
 ## How it's built
 
